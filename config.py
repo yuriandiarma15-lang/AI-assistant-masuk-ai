@@ -55,7 +55,7 @@ SIGNAL_BOT = "https://t.me/AIGOLDASSISTANT_BOT?start"
 REFERRAL_GROUPS = {
 
     "YURI": -1004415837135,
-    "ilham": -5539361849,
+    "REF_ILHAM": -5539361849,
 }
 
 
