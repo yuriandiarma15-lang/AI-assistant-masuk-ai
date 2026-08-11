@@ -64,4 +64,3 @@ REFERRAL_GROUPS = {
 # ==========================================
 
 DEFAULT_REFERRAL = None
-```
