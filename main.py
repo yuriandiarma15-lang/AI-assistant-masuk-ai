@@ -1,3 +1,4 @@
+```python
 import asyncio
 
 from datetime import datetime, timedelta
@@ -104,17 +105,6 @@ async def start(message: Message):
     # ======================================
     # AMBIL REFERRAL DARI /start
     # ======================================
-    #
-    # Contoh:
-    #
-    # /start
-    # /start BUDI
-    # /start ANDI
-    #
-    # Telegram deep link:
-    #
-    # https://t.me/NAMA_BOT?start=BUDI
-    #
 
     referral = None
 
@@ -145,7 +135,6 @@ async def start(message: Message):
 
     else:
 
-        # Jika user masuk tanpa referral
         user_referrals.setdefault(
             user_id,
             None
@@ -155,7 +144,6 @@ async def start(message: Message):
             f"[REFERRAL] "
             f"User {user_id} -> NONE"
         )
-
 
     # ======================================
     # WELCOME BUTTON
@@ -178,11 +166,9 @@ async def start(message: Message):
 
     )
 
-
     photo = FSInputFile(
         "assets/ai_example.jpg"
     )
-
 
     text = f"""
 
@@ -256,7 +242,6 @@ Klik tombol di bawah untuk memulai.
 
 """
 
-
     await message.answer_photo(
 
         photo=photo,
@@ -285,7 +270,6 @@ async def choose_package(
     await callback.message.edit_reply_markup(
         reply_markup=None
     )
-
 
     keyboard = InlineKeyboardMarkup(
 
@@ -330,7 +314,6 @@ async def choose_package(
         ]
 
     )
-
 
     text = """
 
@@ -400,7 +383,6 @@ Silakan pilih paket untuk melanjutkan.
 
 """
 
-
     await callback.message.answer(
 
         text,
@@ -410,7 +392,6 @@ Silakan pilih paket untuk melanjutkan.
         parse_mode="HTML"
 
     )
-
 
     await callback.answer(
         "Silakan pilih paket membership"
@@ -433,20 +414,16 @@ async def show_payment(
         reply_markup=None
     )
 
-
     package_key = callback.data.replace(
         "pkg_",
         ""
     )
 
-
     user_packages[
         callback.from_user.id
     ] = package_key
 
-
     data = PACKAGE_MAP[package_key]
-
 
     payment_text = f"""
 
@@ -502,7 +479,6 @@ bersama <b>XAU AI Assistant</b>.
 
 """
 
-
     await callback.message.answer_photo(
 
         photo=FSInputFile(
@@ -514,7 +490,6 @@ bersama <b>XAU AI Assistant</b>.
         parse_mode="HTML"
 
     )
-
 
     await callback.answer(
         "Paket berhasil dipilih"
@@ -535,11 +510,9 @@ async def receive_payment(
 
     user_id = message.from_user.id
 
-
     user_proofs[
         user_id
     ] = message.photo[-1].file_id
-
 
     keyboard = InlineKeyboardMarkup(
 
@@ -560,7 +533,6 @@ async def receive_payment(
         ]
 
     )
-
 
     await message.answer(
 
@@ -610,16 +582,13 @@ async def verify(
 
     user_id = callback.from_user.id
 
-
     package_key = user_packages.get(
         user_id
     )
 
-
     proof = user_proofs.get(
         user_id
     )
-
 
     if not package_key or not proof:
 
@@ -633,19 +602,15 @@ async def verify(
 
         return
 
-
     await callback.message.edit_reply_markup(
         reply_markup=None
     )
 
-
     data = PACKAGE_MAP[package_key]
-
 
     referral = user_referrals.get(
         user_id
     )
-
 
     if referral:
 
@@ -654,7 +619,6 @@ async def verify(
     else:
 
         referral_display = "-"
-
 
     admin_keyboard = InlineKeyboardMarkup(
 
@@ -684,7 +648,6 @@ async def verify(
 
     )
 
-
     username = (
 
         f"@{callback.from_user.username}"
@@ -694,7 +657,6 @@ async def verify(
         else "-"
 
     )
-
 
     admin_text = f"""
 
@@ -751,7 +713,6 @@ Rp {data['price']:,}
 
 """
 
-
     # ======================================
     # KIRIM LANGSUNG KE ADMIN PRIBADI
     # ======================================
@@ -780,7 +741,6 @@ Rp {data['price']:,}
                 f"Gagal kirim ke admin "
                 f"{admin_id}: {e}"
             )
-
 
     await callback.message.answer(
 
@@ -813,7 +773,6 @@ setelah membership aktif.
 
     )
 
-
     await callback.answer(
         "Dikirim ke Admin"
     )
@@ -835,21 +794,17 @@ async def approve(
         reply_markup=None
     )
 
-
     user_id = int(
         callback.data.split("_")[1]
     )
-
 
     user = await bot.get_chat(
         user_id
     )
 
-
     package_key = user_packages.get(
         user_id
     )
-
 
     if not package_key:
 
@@ -863,9 +818,11 @@ async def approve(
 
         return
 
-
     data = PACKAGE_MAP[package_key]
 
+    # ======================================
+    # HITUNG EXPIRED
+    # ======================================
 
     if data["days"] == 9999:
 
@@ -877,16 +834,13 @@ async def approve(
 
             datetime.now()
 
-            +
-
-            timedelta(
+            + timedelta(
                 days=data["days"]
             )
 
         ).strftime(
             "%d-%m-%Y"
         )
-
 
     # ======================================
     # AMBIL REFERRAL
@@ -896,7 +850,6 @@ async def approve(
         user_id
     )
 
-
     # ======================================
     # TENTUKAN GRUP TUJUAN
     # ======================================
@@ -905,6 +858,13 @@ async def approve(
         referral
     )
 
+    # ======================================
+    # TANGGAL REGISTER
+    # ======================================
+
+    register_date = datetime.now().strftime(
+        "%d-%m-%Y"
+    )
 
     # ======================================
     # SIMPAN KE GOOGLE SHEET
@@ -922,10 +882,7 @@ async def approve(
 
         "harga": data["price"],
 
-        "register":
-        datetime.now().strftime(
-            "%d-%m-%Y"
-        ),
+        "register": register_date,
 
         "expired": expired,
 
@@ -934,7 +891,6 @@ async def approve(
         "referral": referral or ""
 
     })
-
 
     # ======================================
     # KIRIM AKSES KE USER
@@ -959,7 +915,6 @@ async def approve(
         ]
 
     )
-
 
     member_text = f"""
 
@@ -1013,7 +968,6 @@ Selamat trading bersama
 
 """
 
-
     await bot.send_message(
 
         chat_id=user_id,
@@ -1026,10 +980,23 @@ Selamat trading bersama
 
     )
 
-
     # ======================================
     # INFO UNTUK GRUP REFERRAL / PAYMENT
     # ======================================
+    #
+    # HANYA:
+    # - Paket
+    # - Harga
+    # - Referral
+    # - Register
+    # - Expired
+    #
+    # TANPA FOTO
+    # TANPA NAMA
+    # TANPA USERNAME
+    # TANPA TELEGRAM ID
+    # TANPA STATUS
+    #
 
     referral_display = (
         referral
@@ -1037,58 +1004,17 @@ Selamat trading bersama
         else "TANPA REFERRAL"
     )
 
-
     group_text = f"""
 
-🎉 <b>MEMBER BARU AKTIF</b>
+📦 <b>Paket:</b> {data['label']}
+💰 <b>Harga:</b> Rp {data['price']:,}
 
+🔗 <b>Referral:</b> <code>{referral_display}</code>
 
-━━━━━━━━━━━━━━━━━━
+📅 <b>Register:</b> {register_date}
+⏳ <b>Expired:</b> {expired}
 
-
-👤 <b>Nama:</b>
-{user.full_name}
-
-
-🔹 <b>Username:</b>
-@{user.username if user.username else "-"}
-
-
-🆔 <b>Telegram ID:</b>
-<code>{user_id}</code>
-
-
-📦 <b>Paket:</b>
-{data['label']}
-
-
-💰 <b>Harga:</b>
-Rp {data['price']:,}
-
-
-🔗 <b>Referral:</b>
-<code>{referral_display}</code>
-
-
-📅 <b>Register:</b>
-{datetime.now().strftime("%d-%m-%Y")}
-
-
-⏳ <b>Expired:</b>
-{expired}
-
-
-✅ <b>Status:</b>
-ACTIVE
-
-
-━━━━━━━━━━━━━━━━━━
-
-
-Member telah berhasil
-diverifikasi dan diaktifkan.
 """
-
 
     # ======================================
     # KIRIM KE GROUP TUJUAN
@@ -1116,7 +1042,6 @@ diverifikasi dan diaktifkan.
             f"Gagal kirim ke group "
             f"{target_group}: {e}"
         )
-
 
     # ======================================
     # INFO KE ADMIN
@@ -1151,7 +1076,6 @@ dan user sudah menerima akses.
 
     )
 
-
     await callback.answer(
         "Member aktif"
     )
@@ -1173,11 +1097,9 @@ async def reject(
         reply_markup=None
     )
 
-
     user_id = int(
         callback.data.split("_")[1]
     )
-
 
     reject_text = """
 
@@ -1209,7 +1131,6 @@ aktivasi Anda.
 
 """
 
-
     await bot.send_message(
 
         chat_id=user_id,
@@ -1219,7 +1140,6 @@ aktivasi Anda.
         parse_mode="HTML"
 
     )
-
 
     await callback.message.answer(
 
@@ -1238,7 +1158,6 @@ diverifikasi.
         parse_mode="HTML"
 
     )
-
 
     await callback.answer(
         "Payment rejected"
@@ -1261,11 +1180,9 @@ async def sent_to_user(
 
         return
 
-
     parts = message.text.split(
         maxsplit=2
     )
-
 
     if len(parts) < 3:
 
@@ -1283,11 +1200,9 @@ async def sent_to_user(
 
         return
 
-
     target_id_str = parts[1]
 
     text_to_send = parts[2]
-
 
     if not target_id_str.isdigit():
 
@@ -1297,11 +1212,9 @@ async def sent_to_user(
 
         return
 
-
     target_id = int(
         target_id_str
     )
-
 
     try:
 
@@ -1312,7 +1225,6 @@ async def sent_to_user(
             text=text_to_send
 
         )
-
 
         await message.answer(
 
@@ -1325,7 +1237,6 @@ async def sent_to_user(
             parse_mode="HTML"
 
         )
-
 
     except Exception as e:
 
@@ -1360,3 +1271,4 @@ async def main():
 if __name__ == "__main__":
 
     asyncio.run(main())
+```
