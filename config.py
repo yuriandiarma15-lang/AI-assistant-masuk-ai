@@ -54,16 +54,8 @@ SIGNAL_BOT = "https://t.me/AIGOLDASSISTANT_BOT?start"
 
 REFERRAL_GROUPS = {
 
-    "BUDI": -1001111111111,
+    "YURI": -1004415837135,
 
-    "ANDI": -1002222222222,
-
-    "JOHN": -1003333333333,
-
-    # Tambahkan referral baru di sini:
-    #
-    # "SANTI": -100444444444444,
-    # "RUDI": -100555555555555,
 }
 
 
