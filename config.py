@@ -1,4 +1,4 @@
-BOT_TOKEN = "8760132995:AAEjQjCMqcMdb_nBaieqoIRDQcpfedw8nSI"
+BOT_TOKEN = "8760132995:AAFlBsZIxRk3JpE8qbmZaXjTDvBh8DIOm-s"
 
 # ==========================================
 # ADMIN
