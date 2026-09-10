@@ -59,10 +59,27 @@ user_referrals = {}
 
 def get_referral_group(referral):
     """
-    Mengambil GROUP_ID berdasarkan referral.
+    Menentukan GROUP_ID berdasarkan referral.
 
-    Jika referral tidak ada atau tidak ditemukan
-    di config, gunakan PAYMENT_GROUP_ID.
+    Sistem ini berlaku untuk SEMUA referral
+    yang terdapat di REFERRAL_GROUPS.
+
+    Contoh:
+
+    JOIN_6BLN_REF_AKMAL
+        -> REF_AKMAL
+        -> GROUP AKMAL
+
+    JOIN_TRIAL7_REF_OM
+        -> REF_OM
+        -> GROUP OM
+
+    JOIN_1BLN_REF_IKO
+        -> REF_IKO
+        -> GROUP IKO
+
+    Jika referral tidak ditemukan,
+    maka menggunakan PAYMENT_GROUP_ID.
     """
 
     if not referral:
@@ -70,10 +87,62 @@ def get_referral_group(referral):
 
     referral = referral.strip().upper()
 
-    return REFERRAL_GROUPS.get(
-        referral,
-        PAYMENT_GROUP_ID
+    # ======================================
+    # CEK SEMUA REFERRAL
+    # ======================================
+
+    for referral_code, group_id in REFERRAL_GROUPS.items():
+
+        referral_code = referral_code.strip().upper()
+
+        # ----------------------------------
+        # Exact match
+        # ----------------------------------
+
+        if referral == referral_code:
+
+            print(
+                f"[REFERRAL GROUP] "
+                f"{referral} -> {group_id}"
+            )
+
+            return group_id
+
+        # ----------------------------------
+        # Format:
+        #
+        # JOIN_6BLN_REF_AKMAL
+        # JOIN_TRIAL7_REF_AKMAL
+        # JOIN_1BLN_REF_AKMAL
+        #
+        # semuanya cocok dengan:
+        # REF_AKMAL
+        # ----------------------------------
+
+        if referral.endswith(
+            "_" + referral_code
+        ):
+
+            print(
+                f"[REFERRAL GROUP] "
+                f"{referral} -> "
+                f"{referral_code} -> "
+                f"{group_id}"
+            )
+
+            return group_id
+
+    # ======================================
+    # TIDAK DITEMUKAN
+    # ======================================
+
+    print(
+        f"[REFERRAL GROUP] "
+        f"{referral} -> FALLBACK -> "
+        f"{PAYMENT_GROUP_ID}"
     )
+
+    return PAYMENT_GROUP_ID
 
 
 def normalize_referral(referral):
@@ -261,7 +330,6 @@ Klik tombol di bawah untuk memulai.
 @dp.callback_query(
     F.data == "activate"
 )
-
 async def choose_package(
     callback: CallbackQuery
 ):
@@ -404,7 +472,6 @@ Silakan pilih paket untuk melanjutkan.
 @dp.callback_query(
     F.data.startswith("pkg_")
 )
-
 async def show_payment(
     callback: CallbackQuery
 ):
@@ -502,7 +569,6 @@ bersama <b>XAU AI Assistant</b>.
 @dp.message(
     F.photo
 )
-
 async def receive_payment(
     message: Message
 ):
@@ -574,7 +640,6 @@ permintaan pengecekan.
 @dp.callback_query(
     F.data == "verify"
 )
-
 async def verify(
     callback: CallbackQuery
 ):
@@ -784,7 +849,6 @@ setelah membership aktif.
 @dp.callback_query(
     F.data.startswith("approve_")
 )
-
 async def approve(
     callback: CallbackQuery
 ):
@@ -1087,7 +1151,6 @@ dan user sudah menerima akses.
 @dp.callback_query(
     F.data.startswith("reject_")
 )
-
 async def reject(
     callback: CallbackQuery
 ):
@@ -1170,7 +1233,6 @@ diverifikasi.
 @dp.message(
     F.text.startswith("/sent")
 )
-
 async def sent_to_user(
     message: Message
 ):
@@ -1270,4 +1332,3 @@ async def main():
 if __name__ == "__main__":
 
     asyncio.run(main())
-
