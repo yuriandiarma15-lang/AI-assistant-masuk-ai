@@ -1,10 +1,19 @@
 import asyncio
+import re
 
 from datetime import datetime, timedelta
 
-from aiogram import Bot, Dispatcher, F
 
-from aiogram.filters import CommandStart
+from aiogram import (
+    Bot,
+    Dispatcher,
+    F
+)
+
+from aiogram.filters import (
+    CommandStart,
+    Command
+)
 
 from aiogram.types import (
     Message,
@@ -14,6 +23,7 @@ from aiogram.types import (
     InlineKeyboardButton
 )
 
+
 from config import (
     BOT_TOKEN,
     PAYMENT_GROUP_ID,
@@ -22,23 +32,33 @@ from config import (
     REFERRAL_GROUPS
 )
 
-from packages import PACKAGE_MAP
 
-from spreadsheet import save_member
+from packages import (
+    PACKAGE_MAP
+)
 
 
-# ============================================================
+from spreadsheet import (
+    save_member,
+    get_expired_group_members,
+    update_member_status
+)
+
+
+# ==========================================
 # BOT
-# ============================================================
+# ==========================================
 
-bot = Bot(token=BOT_TOKEN)
+bot = Bot(
+    token=BOT_TOKEN
+)
 
 dp = Dispatcher()
 
 
-# ============================================================
-# TEMP STORAGE
-# ============================================================
+# ==========================================
+# TEMP MEMORY
+# ==========================================
 
 user_packages = {}
 
@@ -47,18 +67,13 @@ user_proofs = {}
 user_referrals = {}
 
 
-# ============================================================
-# PACKAGE GROUP ACCESS
-# ============================================================
+# ==========================================
+# GROUP ACCESS
+# ==========================================
 
-def package_has_group_access(package_key: str) -> bool:
-    """
-    Paket yang mendapatkan akses Grup Diskusi & Sharing.
-
-    1 Bulan = AI saja
-    2 Bulan = AI + Group
-    3 Bulan = AI + Group
-    """
+def package_has_group_access(
+    package_key
+):
 
     return package_key in (
         "2BLN",
@@ -66,496 +81,563 @@ def package_has_group_access(package_key: str) -> bool:
     )
 
 
-# ============================================================
+# ==========================================
+# ADMIN CHECK
+# ==========================================
+
+def is_admin(
+    user_id
+):
+
+    if isinstance(
+        ADMIN_IDS,
+        (list, tuple, set)
+    ):
+
+        return user_id in ADMIN_IDS
+
+    return user_id == ADMIN_IDS
+
+
+# ==========================================
 # REFERRAL GROUP
-# ============================================================
+# ==========================================
 
-def get_referral_group(referral):
-    """
-    Menentukan GROUP_ID berdasarkan referral.
-
-    Contoh yang didukung:
-
-    AKMAL
-    REF_AKMAL
-    JOIN_2BLN_REF_AKMAL
-    JOIN_3BLN_REF_AKMAL
-
-    OM
-    REF_OM
-    JOIN_2BLN_REF_OM
-
-    IKO
-    REF_IKO
-
-    Dan referral lain yang
-    ditambahkan ke REFERRAL_GROUPS.
-    """
-
-    # --------------------------------------------------------
-    # TIDAK ADA REFERRAL
-    # --------------------------------------------------------
+def get_referral_group(
+    referral=None
+):
 
     if not referral:
 
-        print(
-            f"[REFERRAL GROUP] "
-            f"NONE -> FALLBACK -> {PAYMENT_GROUP_ID}"
-        )
-
         return PAYMENT_GROUP_ID
 
+    referral = str(
+        referral
+    ).strip().upper()
 
-    referral = referral.strip().upper()
+    # ==================================
+    # NORMALIZE
+    # ==================================
 
+    if referral.startswith(
+        "JOIN_"
+    ):
 
-    # --------------------------------------------------------
-    # CEK SEMUA REFERRAL
-    # --------------------------------------------------------
+        match = re.search(
+            r"_REF_([A-Z0-9_]+)$",
+            referral
+        )
 
-    for referral_code, group_id in REFERRAL_GROUPS.items():
+        if match:
 
-        referral_code = referral_code.strip().upper()
-
-
-        # Contoh:
-        # REF_AKMAL -> AKMAL
-
-        clean_code = referral_code
-
-        if clean_code.startswith("REF_"):
-
-            clean_code = clean_code[4:]
-
-
-        # ----------------------------------------------------
-        # FORMAT 1
-        # AKMAL
-        # ----------------------------------------------------
-
-        if referral == clean_code:
-
-            print(
-                f"[REFERRAL GROUP] "
-                f"{referral} -> {referral_code} -> {group_id}"
+            referral = (
+                "REF_"
+                + match.group(1)
             )
+
+        else:
+
+            match = re.search(
+                r"JOIN_(?:1BLN|2BLN|3BLN)_([A-Z0-9_]+)$",
+                referral
+            )
+
+            if match:
+
+                referral = (
+                    "REF_"
+                    + match.group(1)
+                )
+
+    elif not referral.startswith(
+        "REF_"
+    ):
+
+        referral = (
+            "REF_"
+            + referral
+        )
+
+    # ==================================
+    # SEARCH GROUP
+    # ==================================
+
+    for key, group_id in REFERRAL_GROUPS.items():
+
+        normalized_key = str(
+            key
+        ).strip().upper()
+
+        if normalized_key == referral:
 
             return group_id
 
-
-        # ----------------------------------------------------
-        # FORMAT 2
-        # REF_AKMAL
-        # ----------------------------------------------------
-
-        if referral == referral_code:
-
-            print(
-                f"[REFERRAL GROUP] "
-                f"{referral} -> {referral_code} -> {group_id}"
+        if (
+            not normalized_key.startswith(
+                "REF_"
             )
-
-            return group_id
-
-
-        # ----------------------------------------------------
-        # FORMAT 3
-        # JOIN_2BLN_REF_AKMAL
-        # JOIN_3BLN_REF_AKMAL
-        # JOIN_TRIAL7_REF_AKMAL
-        # ----------------------------------------------------
-
-        if referral.endswith(
-            "_" + referral_code
+            and
+            "REF_" + normalized_key
+            == referral
         ):
 
-            print(
-                f"[REFERRAL GROUP] "
-                f"{referral} -> {referral_code} -> {group_id}"
-            )
-
             return group_id
 
-
-        # ----------------------------------------------------
-        # FORMAT 4
-        # JOIN_2BLN_AKMAL
-        # JOIN_3BLN_AKMAL
-        # ----------------------------------------------------
-
-        if referral.endswith(
-            "_" + clean_code
-        ):
-
-            print(
-                f"[REFERRAL GROUP] "
-                f"{referral} -> {referral_code} -> {group_id}"
-            )
-
-            return group_id
-
-
-    # --------------------------------------------------------
-    # REFERRAL TIDAK DITEMUKAN
-    # --------------------------------------------------------
-
-    print(
-        f"[REFERRAL GROUP] "
-        f"{referral} -> FALLBACK -> {PAYMENT_GROUP_ID}"
-    )
+    # ==================================
+    # FALLBACK
+    # ==================================
 
     return PAYMENT_GROUP_ID
 
 
-# ============================================================
-# NORMALIZE REFERRAL
-# ============================================================
-
-def normalize_referral(referral):
-
-    if not referral:
-
-        return None
-
-
-    referral = referral.strip().upper()
-
-
-    return referral or None
-
-
-# ============================================================
+# ==========================================
 # PARSE START PAYLOAD
-# ============================================================
+# ==========================================
 
-def parse_start_payload(payload):
-    """
-    Format:
-
-    JOIN_1BLN
-    JOIN_2BLN
-    JOIN_3BLN
-
-    JOIN_1BLN_ref_AKMAL
-    JOIN_2BLN_ref_AKMAL
-    JOIN_3BLN_ref_AKMAL
-
-    ref_AKMAL
-
-    AKMAL
-    """
+def parse_start_payload(
+    payload
+):
 
     if not payload:
 
         return None, None
 
-
-    payload = payload.strip()
-
-    upper = payload.upper()
-
-
-    # ========================================================
-    # JOIN FORMAT
-    # ========================================================
-
-    if upper.startswith("JOIN_"):
-
-        rest = payload[5:]
-
-
-        # ----------------------------------------------------
-        # JOIN_<CODE>_ref_<REF>
-        # ----------------------------------------------------
-
-        if "_ref_" in rest.lower():
-
-            idx = rest.lower().index("_ref_")
-
-
-            code = rest[:idx]
-
-            ref = rest[idx + 5:]
-
-
-        else:
-
-            code = rest
-
-            ref = None
-
-
-        code = code.strip().upper()
-
-
-        # ----------------------------------------------------
-        # VALIDASI PACKAGE
-        # ----------------------------------------------------
-
-        if code not in PACKAGE_MAP:
-
-            code = None
-
-
-        return (
-            code,
-            normalize_referral(ref)
-        )
-
-
-    # ========================================================
-    # REF_AKMAL
-    # ========================================================
-
-    if upper.startswith("REF_"):
-
-        return (
-            None,
-            normalize_referral(
-                payload[4:]
-            )
-        )
-
-
-    # ========================================================
-    # REFERRAL POLOS
-    # ========================================================
-
-    return (
-        None,
-        normalize_referral(payload)
-    )
-
-
-# ============================================================
-# PACKAGE BUTTON LABEL
-# ============================================================
-
-def package_button_label(key):
-
-    data = PACKAGE_MAP[key]
-
-
-    return (
-        f"{data['label']} | "
-        f"Rp{data['price']:,}"
-    )
-
-
-# ============================================================
-# SEND QRIS
-# ============================================================
-
-async def send_qris(
-    message: Message,
-    package_key: str
-):
-
-    """
-    Kirim QRIS + instruksi pembayaran.
-    """
-
-    if package_key not in PACKAGE_MAP:
-
-        await message.answer(
-            "⚠️ Paket tidak ditemukan."
-        )
-
-        return
-
-
-    data = PACKAGE_MAP[package_key]
-
-
-    # ========================================================
-    # GROUP INFO
-    # ========================================================
-
-    if package_has_group_access(
-        package_key
-    ):
-
-        group_info = (
-            "\n\n"
-            "👥 <b>Termasuk akses Grup Diskusi & Sharing</b>"
-        )
-
-    else:
-
-        group_info = (
-            "\n\n"
-            "🤖 <b>Akses AI Assistant pribadi</b>"
-        )
-
-
-    text = f"""💳 <b>AKTIVASI MEMBERSHIP</b>
-
-📦 Paket: <b>{data['label']}</b>
-💰 Total: <b>Rp {data['price']:,}</b>{group_info}
-
-📌 Cara bayar:
-
-1️⃣ Scan QRIS di atas
-2️⃣ Transfer sesuai nominal
-3️⃣ Kirim bukti pembayaran ke chat ini
-
-⏳ Setelah itu Admin akan melakukan verifikasi pembayaran."""
-
-
-    await message.answer_photo(
-        photo=FSInputFile(
-            "assets/qris.jpg"
-        ),
-        caption=text,
-        parse_mode="HTML"
-    )
-
-
-# ============================================================
-# START
-# ============================================================
-
-@dp.message(CommandStart())
-async def start(message: Message):
-
-    user_id = message.from_user.id
-
-
-    payload = None
-
-
-    if message.text:
-
-        parts = message.text.split(
-            maxsplit=1
-        )
-
-
-        if len(parts) == 2:
-
-            payload = parts[1]
-
-
-    # ========================================================
-    # PARSE PAYLOAD
-    # ========================================================
-
-    package_key, referral = parse_start_payload(
+    payload = str(
+        payload
+    ).strip().upper()
+
+    # ==================================
+    # JOIN_1BLN
+    # JOIN_2BLN
+    # JOIN_3BLN
+    # ==================================
+
+    match = re.match(
+        r"^JOIN_(1BLN|2BLN|3BLN)$",
         payload
     )
 
+    if match:
 
-    # ========================================================
-    # SIMPAN REFERRAL
-    # ========================================================
-
-    if referral:
-
-        user_referrals[user_id] = referral
-
-
-        print(
-            f"[REFERRAL] "
-            f"User {user_id} -> {referral}"
-        )
-
-    else:
-
-        user_referrals.setdefault(
-            user_id,
+        return (
+            match.group(1),
             None
         )
 
+    # ==================================
+    # JOIN_1BLN_REF_AKMAL
+    # ==================================
 
-    # ========================================================
-    # SIMPAN PACKAGE
-    # ========================================================
+    match = re.match(
+        r"^JOIN_(1BLN|2BLN|3BLN)_REF_(.+)$",
+        payload
+    )
 
-    if package_key:
+    if match:
 
-        user_packages[user_id] = package_key
+        return (
+            match.group(1),
+            "REF_" + match.group(2)
+        )
 
+    # ==================================
+    # JOIN_1BLN_AKMAL
+    # ==================================
+
+    match = re.match(
+        r"^JOIN_(1BLN|2BLN|3BLN)_(.+)$",
+        payload
+    )
+
+    if match:
+
+        return (
+            match.group(1),
+            "REF_" + match.group(2)
+        )
+
+    # ==================================
+    # REF_AKMAL
+    # ==================================
+
+    if payload.startswith(
+        "REF_"
+    ):
+
+        return (
+            None,
+            payload
+        )
+
+    # ==================================
+    # AKMAL
+    # ==================================
+
+    if re.match(
+        r"^[A-Z0-9_]+$",
+        payload
+    ):
+
+        return (
+            None,
+            "REF_" + payload
+        )
+
+    return (
+        None,
+        None
+    )
+
+
+# ==========================================
+# CREATE ONE TIME INVITE
+# ==========================================
+
+async def create_group_invite(
+    group_id,
+    user_id
+):
+
+    try:
+
+        expire_at = int(
+            (
+                datetime.now()
+                +
+                timedelta(hours=24)
+            ).timestamp()
+        )
+
+        invite = await bot.create_chat_invite_link(
+
+            chat_id=group_id,
+
+            name=f"Member {user_id}",
+
+            member_limit=1,
+
+            expire_date=expire_at
+
+        )
+
+        return invite.invite_link
+
+    except Exception as e:
 
         print(
-            f"[PACKAGE] "
-            f"User {user_id} -> {package_key}"
+            "Create invite error:"
+        )
+
+        print(e)
+
+        return None
+
+
+# ==========================================
+# KICK MEMBER
+# ==========================================
+
+async def kick_member(
+    group_id,
+    user_id
+):
+
+    try:
+
+        # Ban
+        await bot.ban_chat_member(
+
+            chat_id=group_id,
+
+            user_id=int(
+                user_id
+            )
+
+        )
+
+        # Unban supaya member
+        # tidak permanent banned
+        await bot.unban_chat_member(
+
+            chat_id=group_id,
+
+            user_id=int(
+                user_id
+            ),
+
+            only_if_banned=True
+
+        )
+
+        print(
+            f"[GROUP] "
+            f"Member {user_id} "
+            f"berhasil dikeluarkan."
+        )
+
+        return True
+
+    except Exception as e:
+
+        print(
+            f"[GROUP] "
+            f"Gagal kick {user_id}:"
+        )
+
+        print(e)
+
+        return False
+
+
+# ==========================================
+# EXPIRED CHECK
+# ==========================================
+
+async def check_expired_members():
+
+    print(
+        "[EXPIRED MONITOR] "
+        "Checking..."
+    )
+
+    members = await asyncio.to_thread(
+        get_expired_group_members
+    )
+
+    if not members:
+
+        return
+
+    for member in members:
+
+        try:
+
+            user_id = int(
+                member[
+                    "telegram_id"
+                ]
+            )
+
+            referral = member.get(
+                "referral",
+                ""
+            )
+
+            group_id = get_referral_group(
+                referral
+            )
+
+            # ==================================
+            # KICK
+            # ==================================
+
+            kicked = await kick_member(
+                group_id,
+                user_id
+            )
+
+            if kicked:
+
+                # ==================================
+                # UPDATE SHEET
+                # ==================================
+
+                await asyncio.to_thread(
+
+                    update_member_status,
+
+                    user_id,
+
+                    "EXPIRED"
+
+                )
+
+                # ==================================
+                # NOTIFY USER
+                # ==================================
+
+                try:
+
+                    await bot.send_message(
+
+                        user_id,
+
+                        "⏰ <b>Masa membership kamu telah berakhir.</b>\n\n"
+
+                        "Akses Grup Diskusi & Sharing telah dihentikan.\n\n"
+
+                        "Silakan melakukan perpanjangan "
+                        "membership jika ingin mendapatkan "
+                        "akses kembali.",
+
+                        parse_mode="HTML"
+
+                    )
+
+                except Exception as e:
+
+                    print(
+                        "[EXPIRED] "
+                        "Gagal kirim notifikasi:"
+                    )
+
+                    print(e)
+
+        except Exception as e:
+
+            print(
+                "[EXPIRED MONITOR] Error:"
+            )
+
+            print(e)
+
+
+# ==========================================
+# EXPIRED MONITOR
+# ==========================================
+
+async def expired_monitor():
+
+    print(
+        "⏰ Expired Monitor Started"
+    )
+
+    while True:
+
+        try:
+
+            await check_expired_members()
+
+        except Exception as e:
+
+            print(
+                "[EXPIRED MONITOR ERROR]"
+            )
+
+            print(e)
+
+        # ==================================
+        # CHECK EVERY 10 MINUTES
+        # ==================================
+
+        await asyncio.sleep(
+            600
         )
 
 
-    # ========================================================
-    # MENU PACKAGE
-    # ========================================================
+# ==========================================
+# START
+# ==========================================
+
+@dp.message(
+    CommandStart()
+)
+
+async def start_handler(
+    message: Message
+):
+
+    args = (
+        message.text.split(
+            maxsplit=1
+        )
+        [1]
+        if len(
+            message.text.split(
+                maxsplit=1
+            )
+        ) > 1
+        else None
+    )
+
+    package_key, referral = parse_start_payload(
+        args
+    )
+
+    if referral:
+
+        user_referrals[
+            message.from_user.id
+        ] = referral
+
+        print(
+            f"[REFERRAL] "
+            f"User "
+            f"{message.from_user.id} "
+            f"-> "
+            f"{referral}"
+        )
+
+    if package_key:
+
+        user_packages[
+            message.from_user.id
+        ] = package_key
+
+    # ==================================
+    # PACKAGE MENU
+    # ==================================
 
     keyboard = InlineKeyboardMarkup(
+
         inline_keyboard=[
 
             [
                 InlineKeyboardButton(
-                    text=(
-                        f"🥇 "
-                        f"{package_button_label('1BLN')}"
-                    ),
+                    text="💎 1 Bulan — Rp500.000",
                     callback_data="pkg_1BLN"
                 )
             ],
 
             [
                 InlineKeyboardButton(
-                    text=(
-                        f"🥈 "
-                        f"{package_button_label('2BLN')}"
-                    ),
+                    text="🔥 2 Bulan — Rp800.000",
                     callback_data="pkg_2BLN"
                 )
             ],
 
             [
                 InlineKeyboardButton(
-                    text=(
-                        f"🥉 "
-                        f"{package_button_label('3BLN')}"
-                    ),
+                    text="👑 3 Bulan — Rp1.000.000",
                     callback_data="pkg_3BLN"
                 )
             ]
 
         ]
+
     )
-
-
-    text = f"""🤖 <b>XAU AI ASSISTANT PREMIUM</b>
-
-Halo <b>{message.from_user.first_name}</b> 👋
-
-Silakan pilih paket membership:
-
-🥇 <b>1 Bulan</b>
-AI Assistant pribadi
-
-🥈 <b>2 Bulan</b>
-AI Assistant + Grup Diskusi & Sharing
-
-🥉 <b>3 Bulan</b>
-AI Assistant + Grup Diskusi & Sharing
-
-Pilih paket di bawah untuk melanjutkan pembayaran."""
-
 
     await message.answer(
-        text,
+
+        "🤖 <b>XAU AI INTELLIGENCE</b>\n\n"
+
+        "Pilih paket membership kamu:\n\n"
+
+        "💎 <b>1 Bulan — Rp500.000</b>\n"
+        "AI Assistant\n\n"
+
+        "🔥 <b>2 Bulan — Rp800.000</b>\n"
+        "AI Assistant + Grup Diskusi & Sharing\n\n"
+
+        "👑 <b>3 Bulan — Rp1.000.000</b>\n"
+        "AI Assistant + Grup Diskusi & Sharing",
+
         reply_markup=keyboard,
+
         parse_mode="HTML"
+
     )
 
 
-# ============================================================
-# PILIH PACKAGE MANUAL
-# ============================================================
+# ==========================================
+# PACKAGE BUTTON
+# ==========================================
 
 @dp.callback_query(
     F.data.startswith("pkg_")
 )
-async def show_payment(
+
+async def package_handler(
     callback: CallbackQuery
 ):
 
@@ -564,728 +646,671 @@ async def show_payment(
         ""
     )
 
-
-    # ========================================================
-    # VALIDASI PACKAGE
-    # ========================================================
-
     if package_key not in PACKAGE_MAP:
 
         await callback.answer(
-            "⚠️ Paket tidak ditemukan.",
+            "Paket tidak tersedia.",
             show_alert=True
         )
 
         return
 
-
-    # ========================================================
-    # SIMPAN PACKAGE
-    # ========================================================
+    user_id = callback.from_user.id
 
     user_packages[
-        callback.from_user.id
+        user_id
     ] = package_key
 
+    await callback.answer()
 
-    # ========================================================
-    # HAPUS BUTTON LAMA
-    # ========================================================
-
-    try:
-
-        await callback.message.edit_reply_markup(
-            reply_markup=None
-        )
-
-    except Exception:
-
-        pass
-
-
-    # ========================================================
-    # QRIS
-    # ========================================================
-
-    await send_qris(
-        callback.message,
+    package = PACKAGE_MAP[
         package_key
-    )
+    ]
 
+    price = package[
+        "price"
+    ]
 
-    await callback.answer(
-        "Paket berhasil dipilih"
-    )
+    label = package[
+        "label"
+    ]
 
+    if package_has_group_access(
+        package_key
+    ):
 
-# ============================================================
-# TERIMA BUKTI PEMBAYARAN
-# ============================================================
-
-@dp.message(F.photo)
-async def receive_payment(
-    message: Message
-):
-
-    user_id = message.from_user.id
-
-
-    # ========================================================
-    # CEK PACKAGE
-    # ========================================================
-
-    package_key = user_packages.get(
-        user_id
-    )
-
-
-    if not package_key:
-
-        await message.answer(
-            "⚠️ Silakan pilih paket terlebih dahulu menggunakan /start."
+        access_text = (
+            "✅ AI Assistant\n"
+            "✅ Grup Diskusi & Sharing"
         )
 
-        return
+    else:
 
-
-    # ========================================================
-    # SIMPAN PHOTO
-    # ========================================================
-
-    user_proofs[user_id] = (
-        message.photo[-1].file_id
-    )
-
-
-    # ========================================================
-    # BUTTON VERIFY
-    # ========================================================
+        access_text = (
+            "✅ AI Assistant"
+        )
 
     keyboard = InlineKeyboardMarkup(
+
         inline_keyboard=[
 
             [
                 InlineKeyboardButton(
-                    text="✅ KIRIM KE ADMIN",
-                    callback_data="verify"
+                    text="💳 BAYAR & KIRIM BUKTI",
+                    callback_data="payment"
                 )
             ]
 
         ]
+
     )
 
+    await callback.message.edit_text(
 
-    text = """✅ <b>BUKTI PEMBAYARAN DITERIMA</b>
+        "📦 <b>PAKET YANG DIPILIH</b>\n\n"
 
-Status: 🟡 Menunggu verifikasi Admin
+        f"<b>{label}</b>\n"
+        f"Harga: <b>Rp{price:,}</b>\n\n"
 
-Klik tombol di bawah untuk mengirim bukti pembayaran ke Admin."""
+        f"{access_text}\n\n"
 
+        "Silakan lakukan pembayaran melalui QRIS.\n"
+        "Setelah pembayaran, kirim bukti transfer "
+        "ke bot ini.",
 
-    await message.answer(
-        text,
         reply_markup=keyboard,
+
         parse_mode="HTML"
+
     )
 
 
-# ============================================================
-# VERIFY PAYMENT
-# ============================================================
+# ==========================================
+# PAYMENT
+# ==========================================
 
 @dp.callback_query(
-    F.data == "verify"
+    F.data == "payment"
 )
-async def verify(
+
+async def payment_handler(
     callback: CallbackQuery
 ):
 
     user_id = callback.from_user.id
 
-
     package_key = user_packages.get(
         user_id
     )
-
-
-    proof = user_proofs.get(
-        user_id
-    )
-
-
-    if (
-        not package_key
-        or not proof
-    ):
-
-        await callback.answer(
-            "⚠️ Data belum lengkap",
-            show_alert=True
-        )
-
-        return
-
-
-    # ========================================================
-    # HAPUS BUTTON USER
-    # ========================================================
-
-    try:
-
-        await callback.message.edit_reply_markup(
-            reply_markup=None
-        )
-
-    except Exception:
-
-        pass
-
-
-    data = PACKAGE_MAP[
-        package_key
-    ]
-
-
-    # ========================================================
-    # REFERRAL
-    # ========================================================
-
-    referral = user_referrals.get(
-        user_id
-    )
-
-
-    referral_display = (
-        referral
-        if referral
-        else "-"
-    )
-
-
-    # ========================================================
-    # ADMIN KEYBOARD
-    # ========================================================
-
-    admin_keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-
-            [
-
-                InlineKeyboardButton(
-                    text="✅ APPROVE",
-                    callback_data=(
-                        f"approve_{user_id}"
-                    )
-                ),
-
-                InlineKeyboardButton(
-                    text="❌ REJECT",
-                    callback_data=(
-                        f"reject_{user_id}"
-                    )
-                )
-
-            ]
-
-        ]
-    )
-
-
-    # ========================================================
-    # USERNAME
-    # ========================================================
-
-    username = (
-
-        f"@{callback.from_user.username}"
-
-        if callback.from_user.username
-
-        else "-"
-
-    )
-
-
-    # ========================================================
-    # ADMIN TEXT
-    # ========================================================
-
-    admin_text = f"""📥 <b>PAYMENT VERIFICATION</b>
-
-👤 Nama: {callback.from_user.full_name}
-🔹 Username: {username}
-🆔 Telegram ID: <code>{user_id}</code>
-
-📦 Paket: <b>{data['label']}</b>
-💰 Total: <b>Rp {data['price']:,}</b>
-🔗 Referral: <code>{referral_display}</code>
-
-👥 Group Access:
-{"✅ YA" if package_has_group_access(package_key) else "❌ TIDAK"}
-
-⚡ Silakan lakukan verifikasi."""
-
-
-    # ========================================================
-    # SEND TO ALL ADMIN
-    # ========================================================
-
-    for admin_id in ADMIN_IDS:
-
-        try:
-
-            await bot.send_photo(
-
-                chat_id=admin_id,
-
-                photo=proof,
-
-                caption=admin_text,
-
-                reply_markup=admin_keyboard,
-
-                parse_mode="HTML"
-
-            )
-
-        except Exception as e:
-
-            print(
-                f"Gagal kirim ke admin "
-                f"{admin_id}: {e}"
-            )
-
-
-    # ========================================================
-    # USER MESSAGE
-    # ========================================================
-
-    await callback.message.answer(
-
-        "⏳ <b>VERIFIKASI DIKIRIM</b>\n\n"
-        "Status: 🟡 Menunggu approval Admin.",
-
-        parse_mode="HTML"
-
-    )
-
-
-    await callback.answer(
-        "Dikirim ke Admin"
-    )
-
-
-# ============================================================
-# APPROVE MEMBER
-# ============================================================
-
-@dp.callback_query(
-    F.data.startswith("approve_")
-)
-async def approve(
-    callback: CallbackQuery
-):
-
-    try:
-
-        await callback.message.edit_reply_markup(
-            reply_markup=None
-        )
-
-    except Exception:
-
-        pass
-
-
-    # ========================================================
-    # USER ID
-    # ========================================================
-
-    user_id = int(
-        callback.data.split("_")[1]
-    )
-
-
-    # ========================================================
-    # GET USER
-    # ========================================================
-
-    try:
-
-        user = await bot.get_chat(
-            user_id
-        )
-
-    except Exception as e:
-
-        await callback.answer(
-            "User tidak ditemukan.",
-            show_alert=True
-        )
-
-        print(
-            f"[APPROVE] "
-            f"Gagal get user {user_id}: {e}"
-        )
-
-        return
-
-
-    # ========================================================
-    # GET PACKAGE
-    # ========================================================
-
-    package_key = user_packages.get(
-        user_id
-    )
-
 
     if not package_key:
 
         await callback.answer(
-            "Data paket tidak ditemukan",
+            "Silakan pilih paket terlebih dahulu.",
             show_alert=True
         )
 
         return
 
+    await callback.answer()
 
-    if package_key not in PACKAGE_MAP:
-
-        await callback.answer(
-            "Paket tidak valid",
-            show_alert=True
-        )
-
-        return
-
-
-    data = PACKAGE_MAP[
+    package = PACKAGE_MAP[
         package_key
     ]
 
+    price = package[
+        "price"
+    ]
 
-    # ========================================================
-    # EXPIRED
-    # ========================================================
+    label = package[
+        "label"
+    ]
 
-    if data["days"] == 9999:
+    # ==================================
+    # QRIS
+    # ==================================
 
-        expired = "PERMANENT ACCESS"
+    try:
 
-    else:
+        photo = FSInputFile(
+            "assets/qris.jpg"
+        )
 
-        expired = (
-            datetime.now()
-            + timedelta(
-                days=data["days"]
-            )
-        ).strftime(
-            "%d-%m-%Y"
+        await callback.message.answer_photo(
+
+            photo=photo,
+
+            caption=(
+
+                "💳 <b>PEMBAYARAN QRIS</b>\n\n"
+
+                f"Paket: <b>{label}</b>\n"
+
+                f"Harga: <b>Rp{price:,}</b>\n\n"
+
+                "Silakan scan QRIS di atas.\n\n"
+
+                "Setelah pembayaran berhasil, "
+                "kirim <b>foto bukti pembayaran</b> "
+                "ke bot ini.\n\n"
+
+                "Admin akan melakukan verifikasi."
+
+            ),
+
+            parse_mode="HTML"
+
+        )
+
+    except Exception as e:
+
+        print(
+            "QRIS Error:"
+        )
+
+        print(e)
+
+        await callback.message.answer(
+
+            "QRIS sedang tidak tersedia. "
+            "Silakan hubungi admin."
+
         )
 
 
-    # ========================================================
-    # REFERRAL
-    # ========================================================
+# ==========================================
+# RECEIVE PAYMENT PROOF
+# ==========================================
 
-    referral = user_referrals.get(
+@dp.message(
+    F.photo
+)
+
+async def receive_payment_proof(
+    message: Message
+):
+
+    user_id = message.from_user.id
+
+    package_key = user_packages.get(
         user_id
     )
 
+    if not package_key:
 
-    # ========================================================
-    # GROUP ACCESS
-    # ========================================================
-
-    has_group_access = package_has_group_access(
-        package_key
-    )
-
-
-    # ========================================================
-    # TARGET REFERRAL GROUP
-    # ========================================================
-
-    if has_group_access:
-
-        target_group = get_referral_group(
-            referral
+        await message.answer(
+            "Silakan pilih paket terlebih dahulu dengan /start."
         )
 
-    else:
+        return
 
-        target_group = None
+    photo = message.photo[
+        -1
+    ]
 
+    user_proofs[
+        user_id
+    ] = photo.file_id
 
-    # ========================================================
-    # REGISTER DATE
-    # ========================================================
+    await message.answer(
 
-    register_date = datetime.now().strftime(
-        "%d-%m-%Y"
-    )
+        "✅ <b>Bukti pembayaran diterima.</b>\n\n"
 
+        "Silakan isi data berikut untuk "
+        "menyesuaikan Signal AI dengan broker "
+        "yang kamu gunakan:\n\n"
 
-    # ========================================================
-    # SAVE GOOGLE SHEET
-    # ========================================================
+        "<b>Nama :</b>\n"
+        "<b>Broker :</b>\n"
+        "<b>Gmail :</b>\n\n"
 
-    save_member({
-
-        "telegram_id": user_id,
-
-        "username": user.username or "",
-
-        "nama": user.full_name,
-
-        "paket": data["label"],
-
-        "harga": data["price"],
-
-        "register": register_date,
-
-        "expired": expired,
-
-        "status": "ACTIVE",
-
-        "referral": referral or ""
-
-    })
-
-
-    # ========================================================
-    # USER BUTTON
-    # ========================================================
-
-    button = InlineKeyboardMarkup(
-        inline_keyboard=[
-
-            [
-
-                InlineKeyboardButton(
-                    text="🤖 MASUK AI ASSISTANT",
-                    url=SIGNAL_BOT
-                )
-
-            ]
-
-        ]
-    )
-
-
-    # ========================================================
-    # GROUP INFO USER
-    # ========================================================
-
-    if has_group_access:
-
-        group_user_text = """
-
-👥 <b>Grup Diskusi & Sharing</b>
-Akses grup akan diberikan sesuai proses membership."""
-
-    else:
-
-        group_user_text = """
-
-🤖 <b>Akses Grup:</b>
-Tidak termasuk dalam paket 1 Bulan."""
-
-
-    # ========================================================
-    # MEMBER ACTIVE MESSAGE
-    # ========================================================
-
-    member_text = f"""🎉 <b>MEMBERSHIP AKTIF</b>
-
-📦 Paket: <b>{data['label']}</b>
-💰 Harga: <b>Rp {data['price']:,}</b>
-⏳ Masa Aktif: <b>{expired}</b>
-
-✅ AI Assistant Telegram
-✅ Analisa XAUUSD
-✅ Smart Money Concept{group_user_text}
-
-Selamat trading bersama
-<b>XAU AI Assistant</b> 🤖"""
-
-
-    await bot.send_message(
-
-        chat_id=user_id,
-
-        text=member_text,
-
-        reply_markup=button,
+        "Kirim format tersebut ke sini ya.",
 
         parse_mode="HTML"
 
     )
 
 
-    # ========================================================
-    # GROUP MESSAGE
-    # ========================================================
+# ==========================================
+# RECEIVE USER DATA
+# ==========================================
 
-    group_status = "NOT REQUIRED"
+@dp.message(
+    F.text
+)
 
+async def receive_user_data(
+    message: Message
+):
 
-    if has_group_access:
+    user_id = message.from_user.id
 
-        referral_display = (
-            referral
-            if referral
-            else "TANPA REFERRAL"
+    if user_id not in user_proofs:
+
+        return
+
+    text = message.text.strip()
+
+    # ==================================
+    # FORWARD DATA TO ADMIN
+    # ==================================
+
+    for admin_id in (
+        ADMIN_IDS
+        if isinstance(
+            ADMIN_IDS,
+            (list, tuple, set)
         )
-
-
-        group_text = f"""📦 <b>MEMBER BARU</b>
-
-👤 <b>Nama:</b> {user.full_name}
-🔹 <b>Username:</b> @{user.username if user.username else "-"}
-🆔 <b>Telegram ID:</b> <code>{user_id}</code>
-
-📦 <b>Paket:</b> {data['label']}
-💰 <b>Harga:</b> Rp {data['price']:,}
-
-🔗 <b>Referral:</b> <code>{referral_display}</code>
-📅 <b>Register:</b> {register_date}
-⏳ <b>Expired:</b> {expired}"""
-
-
-        # ----------------------------------------------------
-        # SEND TO REFERRAL GROUP
-        # ----------------------------------------------------
+        else [ADMIN_IDS]
+    ):
 
         try:
 
             await bot.send_message(
 
-                chat_id=target_group,
+                admin_id,
 
-                text=group_text,
+                "📋 <b>DATA MEMBER BARU</b>\n\n"
+
+                f"👤 Telegram ID: "
+                f"<code>{user_id}</code>\n"
+
+                f"Username: "
+                f"@{message.from_user.username or '-'}\n\n"
+
+                f"📦 Paket: "
+                f"<b>{PACKAGE_MAP[user_packages[user_id]]['label']}</b>\n\n"
+
+                f"📝 Data Member:\n"
+                f"{text}",
 
                 parse_mode="HTML"
 
             )
 
+            # ==================================
+            # SEND PAYMENT PROOF
+            # ==================================
 
-            group_status = "SUCCESS"
+            await bot.send_photo(
 
+                admin_id,
+
+                user_proofs[user_id],
+
+                caption=(
+                    "💳 Bukti pembayaran "
+                    f"User ID {user_id}"
+                )
+
+            )
+
+            keyboard = InlineKeyboardMarkup(
+
+                inline_keyboard=[
+
+                    [
+
+                        InlineKeyboardButton(
+
+                            text="✅ TERIMA",
+
+                            callback_data=f"approve_{user_id}"
+
+                        ),
+
+                        InlineKeyboardButton(
+
+                            text="❌ TOLAK",
+
+                            callback_data=f"reject_{user_id}"
+
+                        )
+
+                    ]
+
+                ]
+
+            )
+
+            await bot.send_message(
+
+                admin_id,
+
+                "Pilih tindakan:",
+
+                reply_markup=keyboard
+
+            )
 
         except Exception as e:
 
-            group_status = f"FAILED: {e}"
-
-
             print(
-                f"Gagal kirim ke group "
-                f"{target_group}: {e}"
+                "Send admin data error:"
             )
 
+            print(e)
 
-    # ========================================================
-    # ADMIN RESULT
-    # ========================================================
+    await message.answer(
 
-    referral_display = (
-        referral
-        if referral
-        else "TANPA REFERRAL"
+        "✅ Data kamu sudah dikirim ke admin.\n\n"
+        "Silakan tunggu proses verifikasi."
+
     )
 
 
-    if has_group_access:
+# ==========================================
+# APPROVE
+# ==========================================
 
-        group_display = (
-            f"<code>{target_group}</code>"
+@dp.callback_query(
+    F.data.startswith("approve_")
+)
+
+async def approve_handler(
+    callback: CallbackQuery
+):
+
+    if not is_admin(
+        callback.from_user.id
+    ):
+
+        await callback.answer(
+            "Tidak memiliki akses.",
+            show_alert=True
         )
 
-    else:
+        return
 
-        group_display = "TIDAK ADA"
+    user_id = int(
+        callback.data.split(
+            "_"
+        )[1]
+    )
 
+    package_key = user_packages.get(
+        user_id
+    )
+
+    if not package_key:
+
+        await callback.answer(
+            "Data paket user tidak ditemukan.",
+            show_alert=True
+        )
+
+        return
+
+    package = PACKAGE_MAP[
+        package_key
+    ]
+
+    now = datetime.now()
+
+    expired = (
+        now
+        +
+        timedelta(
+            days=package["days"]
+        )
+    )
+
+    referral = user_referrals.get(
+        user_id,
+        ""
+    )
+
+    # ==================================
+    # SAVE TO GOOGLE SHEET FIRST
+    # ==================================
+
+    member_data = {
+
+        "telegram_id":
+            user_id,
+
+        "username":
+            callback.message.chat.username
+            if callback.message.chat
+            else "",
+
+        "nama":
+            "",
+
+        "paket":
+            package["label"],
+
+        "harga":
+            package["price"],
+
+        "register":
+            now.strftime(
+                "%d-%m-%Y %H:%M:%S"
+            ),
+
+        "expired":
+            expired.strftime(
+                "%d-%m-%Y %H:%M:%S"
+            ),
+
+        "status":
+            "ACTIVE",
+
+        "referral":
+            referral
+
+    }
+
+    saved = await asyncio.to_thread(
+
+        save_member,
+
+        member_data
+
+    )
+
+    if not saved:
+
+        await callback.answer(
+            "Gagal menyimpan ke Google Sheet.",
+            show_alert=True
+        )
+
+        return
+
+    # ==================================
+    # CREATE GROUP INVITE
+    # ==================================
+
+    invite_link = None
+
+    group_id = None
+
+    if package_has_group_access(
+        package_key
+    ):
+
+        group_id = get_referral_group(
+            referral
+        )
+
+        invite_link = await create_group_invite(
+
+            group_id,
+
+            user_id
+
+        )
+
+    # ==================================
+    # USER MESSAGE
+    # ==================================
+
+    try:
+
+        user_keyboard = []
+
+        # AI ASSISTANT
+        user_keyboard.append([
+
+            InlineKeyboardButton(
+
+                text="🤖 BUKA AI ASSISTANT",
+
+                url=SIGNAL_BOT
+
+            )
+
+        ])
+
+        # GROUP
+        if invite_link:
+
+            user_keyboard.append([
+
+                InlineKeyboardButton(
+
+                    text="👥 MASUK GRUP DISKUSI",
+
+                    url=invite_link
+
+                )
+
+            ])
+
+        await bot.send_message(
+
+            user_id,
+
+            "🎉 <b>PEMBAYARAN DISETUJUI</b>\n\n"
+
+            f"📦 Paket: "
+            f"<b>{package['label']}</b>\n"
+
+            f"💰 Harga: "
+            f"<b>Rp{package['price']:,}</b>\n\n"
+
+            f"📅 Aktif sampai:\n"
+            f"<b>{expired.strftime('%d-%m-%Y %H:%M:%S')}</b>\n\n"
+
+            "Akses kamu:",
+
+            reply_markup=InlineKeyboardMarkup(
+
+                inline_keyboard=user_keyboard
+
+            ),
+
+            parse_mode="HTML"
+
+        )
+
+        # ==================================
+        # GROUP NOTIFICATION
+        # ==================================
+
+        if group_id:
+
+            try:
+
+                await bot.send_message(
+
+                    group_id,
+
+                    "🔔 <b>MEMBER BARU</b>\n\n"
+
+                    "Member baru telah mendapatkan "
+                    "akses melalui sistem membership.",
+
+                    parse_mode="HTML"
+
+                )
+
+            except Exception as e:
+
+                print(
+                    "[GROUP] "
+                    "Notification failed:"
+                )
+
+                print(e)
+
+    except Exception as e:
+
+        print(
+            "User approval message error:"
+        )
+
+        print(e)
+
+    await callback.message.edit_reply_markup(
+        reply_markup=None
+    )
 
     await callback.message.answer(
 
-        f"✅ <b>MEMBER AKTIF</b>\n\n"
+        f"✅ User <code>{user_id}</code> "
+        "berhasil disetujui.\n\n"
 
-        f"👤 Nama: "
-        f"<b>{user.full_name}</b>\n"
+        f"Paket: <b>{package['label']}</b>\n"
 
-        f"📦 Paket: "
-        f"<b>{data['label']}</b>\n"
+        f"Expired: "
+        f"<b>{expired.strftime('%d-%m-%Y %H:%M:%S')}</b>\n"
 
-        f"💰 Harga: "
-        f"<b>Rp {data['price']:,}</b>\n"
-
-        f"⏳ Expired: "
-        f"<b>{expired}</b>\n\n"
-
-        f"🔗 Referral: "
-        f"<code>{referral_display}</code>\n"
-
-        f"👥 Group Access: "
-        f"<b>{'YA' if has_group_access else 'TIDAK'}</b>\n"
-
-        f"📢 Group: "
-        f"{group_display}\n"
-
-        f"📡 Status: "
-        f"<code>{group_status}</code>",
+        + (
+            "\n👥 Invite grup berhasil dibuat."
+            if invite_link
+            else "\n🤖 Paket AI Assistant saja."
+        ),
 
         parse_mode="HTML"
 
     )
 
-
     await callback.answer(
-        "Member aktif"
+        "Member disetujui."
     )
 
 
-# ============================================================
-# REJECT MEMBER
-# ============================================================
+# ==========================================
+# REJECT
+# ==========================================
 
 @dp.callback_query(
     F.data.startswith("reject_")
 )
-async def reject(
+
+async def reject_handler(
     callback: CallbackQuery
 ):
 
-    try:
+    if not is_admin(
+        callback.from_user.id
+    ):
 
-        await callback.message.edit_reply_markup(
-            reply_markup=None
+        await callback.answer(
+            "Tidak memiliki akses.",
+            show_alert=True
         )
 
-    except Exception:
-
-        pass
-
+        return
 
     user_id = int(
-        callback.data.split("_")[1]
+        callback.data.split(
+            "_"
+        )[1]
     )
-
-
-    reject_text = """❌ <b>PEMBAYARAN BELUM DIVERIFIKASI</b>
-
-Mohon periksa kembali bukti pembayaran dan nominal.
-
-Jika membutuhkan bantuan, silakan hubungi Admin."""
-
 
     try:
 
         await bot.send_message(
 
-            chat_id=user_id,
+            user_id,
 
-            text=reject_text,
+            "❌ <b>Pembayaran belum dapat disetujui.</b>\n\n"
+
+            "Silakan hubungi admin jika "
+            "ada kesalahan pada proses pembayaran.",
 
             parse_mode="HTML"
 
@@ -1294,130 +1319,97 @@ Jika membutuhkan bantuan, silakan hubungi Admin."""
     except Exception as e:
 
         print(
-            f"Gagal kirim reject ke "
-            f"{user_id}: {e}"
+            "Reject notification error:"
         )
 
+        print(e)
+
+    await callback.message.edit_reply_markup(
+        reply_markup=None
+    )
 
     await callback.message.answer(
 
-        "❌ User telah diberi tahu bahwa payment belum bisa diverifikasi.",
+        f"❌ User <code>{user_id}</code> "
+        "ditolak.",
 
         parse_mode="HTML"
 
     )
 
-
     await callback.answer(
-        "Payment rejected"
+        "Pembayaran ditolak."
     )
 
 
-# ============================================================
-# ADMIN: KIRIM PESAN KE USER
-# ============================================================
+# ==========================================
+# ADMIN SEND MESSAGE
+# ==========================================
 
 @dp.message(
-    F.text.startswith("/sent")
+    Command("sent")
 )
-async def sent_to_user(
+
+async def sent_handler(
     message: Message
 ):
 
-    # ========================================================
-    # CEK ADMIN
-    # ========================================================
-
-    if message.from_user.id not in ADMIN_IDS:
+    if not is_admin(
+        message.from_user.id
+    ):
 
         return
-
 
     parts = message.text.split(
         maxsplit=2
     )
 
-
     if len(parts) < 3:
 
         await message.answer(
 
-            "⚠️ Format salah.\n\n"
-            "Gunakan:\n"
-            "<code>/sent [telegram_id] [pesan]</code>",
+            "Format:\n\n"
+
+            "<code>/sent TELEGRAM_ID PESAN</code>",
 
             parse_mode="HTML"
 
         )
 
         return
-
-
-    target_id_str = parts[1]
-
-    text_to_send = parts[2]
-
-
-    # ========================================================
-    # VALIDASI TELEGRAM ID
-    # ========================================================
-
-    if not target_id_str.isdigit():
-
-        await message.answer(
-            "⚠️ Telegram ID harus berupa angka."
-        )
-
-        return
-
-
-    target_id = int(
-        target_id_str
-    )
-
-
-    # ========================================================
-    # KIRIM PESAN
-    # ========================================================
 
     try:
 
+        user_id = int(
+            parts[1]
+        )
+
+        text = parts[2]
+
         await bot.send_message(
 
-            chat_id=target_id,
+            user_id,
 
-            text=text_to_send
+            text
 
         )
-
 
         await message.answer(
-
-            f"✅ Pesan terkirim ke "
-            f"<code>{target_id}</code>\n\n"
-            f"💬 {text_to_send}",
-
-            parse_mode="HTML"
-
+            "✅ Pesan berhasil dikirim."
         )
-
 
     except Exception as e:
 
         await message.answer(
 
-            f"❌ Gagal kirim ke "
-            f"<code>{target_id}</code>\n"
-            f"⚠️ {e}",
-
-            parse_mode="HTML"
+            f"❌ Gagal mengirim:\n{e}"
 
         )
 
 
-# ============================================================
-# RUN BOT
-# ============================================================
+# ==========================================
+# MAIN
+# ==========================================
 
 async def main():
 
@@ -1426,35 +1418,48 @@ async def main():
     )
 
     print(
-        "🤖 XAU AI Assistant Bot Running..."
+        "🤖 XAU AI ASSISTANT BOT STARTING..."
     )
 
     print(
         "=========================================="
     )
 
-    print(
-        "[PACKAGE] 1BLN = AI Assistant ONLY"
+    # ==================================
+    # START EXPIRED MONITOR
+    # ==================================
+
+    asyncio.create_task(
+        expired_monitor()
     )
 
     print(
-        "[PACKAGE] 2BLN = AI Assistant + GROUP"
+        "⏰ Expired Monitor: EVERY 10 MINUTES"
     )
 
     print(
-        "[PACKAGE] 3BLN = AI Assistant + GROUP"
+        "👥 Group Access: 2BLN + 3BLN"
     )
 
+    print(
+        "🤖 AI Assistant: ALL PACKAGES"
+    )
+
+    print(
+        "❌ Trial: DISABLED"
+    )
+
+    # ==================================
+    # START BOT
+    # ==================================
 
     await dp.start_polling(
         bot
     )
 
 
-# ============================================================
-# START
-# ============================================================
-
 if __name__ == "__main__":
 
-    asyncio.run(main())
+    asyncio.run(
+        main()
+    )
