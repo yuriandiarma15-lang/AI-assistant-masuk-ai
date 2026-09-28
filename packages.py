@@ -8,26 +8,20 @@ PACKAGE_MAP = {
 
     "1BLN": {
         "label": "1 Bulan",
-        "price": 299000,
+        "price": 500000,
         "days": 30
     },
 
-    "6BLN": {
-        "label": "6 Bulan",
-        "price": 500000,
-        "days": 180
+    "2BLN": {
+        "label": "2 Bulan",
+        "price": 800000,
+        "days": 60
     },
 
-    "12BLN": {
-        "label": "12 Bulan",
-        "price": 850000,
-        "days": 365
-    },
-
-    "3THN": {
-        "label": "3 Tahun",
-        "price": 1500000,
-        "days": 1095
+    "3BLN": {
+        "label": "3 Bulan",
+        "price": 1000000,
+        "days": 90
     }
 
 }
