@@ -1,11 +1,5 @@
 PACKAGE_MAP = {
 
-    "TRIAL7": {
-        "label": "Trial 7 Hari",
-        "price": 149000,
-        "days": 7
-    },
-
     "1BLN": {
         "label": "1 Bulan",
         "price": 500000,
