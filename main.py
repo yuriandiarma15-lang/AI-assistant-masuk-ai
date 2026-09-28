@@ -107,7 +107,16 @@ def get_referral_group(
     referral=None
 ):
 
+    # ======================================
+    # NO REFERRAL
+    # ======================================
+
     if not referral:
+
+        print(
+            "[REFERRAL GROUP] "
+            "Referral kosong -> PAYMENT_GROUP_ID"
+        )
 
         return PAYMENT_GROUP_ID
 
@@ -115,13 +124,19 @@ def get_referral_group(
         referral
     ).strip().upper()
 
-    # ==================================
-    # NORMALIZE
-    # ==================================
+    # ======================================
+    # NORMALIZE JOIN PAYLOAD
+    # ======================================
 
     if referral.startswith(
         "JOIN_"
     ):
+
+        # ----------------------------------
+        # JOIN_1BLN_REF_AKMAL
+        # JOIN_2BLN_REF_AKMAL
+        # JOIN_3BLN_REF_AKMAL
+        # ----------------------------------
 
         match = re.search(
             r"_REF_([A-Z0-9_]+)$",
@@ -137,6 +152,12 @@ def get_referral_group(
 
         else:
 
+            # ----------------------------------
+            # JOIN_1BLN_AKMAL
+            # JOIN_2BLN_AKMAL
+            # JOIN_3BLN_AKMAL
+            # ----------------------------------
+
             match = re.search(
                 r"JOIN_(?:1BLN|2BLN|3BLN)_([A-Z0-9_]+)$",
                 referral
@@ -149,6 +170,10 @@ def get_referral_group(
                     + match.group(1)
                 )
 
+    # ======================================
+    # ADD REF_ PREFIX
+    # ======================================
+
     elif not referral.startswith(
         "REF_"
     ):
@@ -158,9 +183,9 @@ def get_referral_group(
             + referral
         )
 
-    # ==================================
-    # SEARCH GROUP
-    # ==================================
+    # ======================================
+    # SEARCH REFERRAL GROUP
+    # ======================================
 
     for key, group_id in REFERRAL_GROUPS.items():
 
@@ -169,6 +194,11 @@ def get_referral_group(
         ).strip().upper()
 
         if normalized_key == referral:
+
+            print(
+                f"[REFERRAL GROUP] "
+                f"{referral} -> {group_id}"
+            )
 
             return group_id
 
@@ -181,11 +211,22 @@ def get_referral_group(
             == referral
         ):
 
+            print(
+                f"[REFERRAL GROUP] "
+                f"{referral} -> {group_id}"
+            )
+
             return group_id
 
-    # ==================================
+    # ======================================
     # FALLBACK
-    # ==================================
+    # ======================================
+
+    print(
+        f"[REFERRAL GROUP] "
+        f"{referral} tidak ditemukan -> "
+        f"{PAYMENT_GROUP_ID}"
+    )
 
     return PAYMENT_GROUP_ID
 
@@ -206,11 +247,11 @@ def parse_start_payload(
         payload
     ).strip().upper()
 
-    # ==================================
+    # ======================================
     # JOIN_1BLN
     # JOIN_2BLN
     # JOIN_3BLN
-    # ==================================
+    # ======================================
 
     match = re.match(
         r"^JOIN_(1BLN|2BLN|3BLN)$",
@@ -224,9 +265,9 @@ def parse_start_payload(
             None
         )
 
-    # ==================================
+    # ======================================
     # JOIN_1BLN_REF_AKMAL
-    # ==================================
+    # ======================================
 
     match = re.match(
         r"^JOIN_(1BLN|2BLN|3BLN)_REF_(.+)$",
@@ -240,9 +281,9 @@ def parse_start_payload(
             "REF_" + match.group(2)
         )
 
-    # ==================================
+    # ======================================
     # JOIN_1BLN_AKMAL
-    # ==================================
+    # ======================================
 
     match = re.match(
         r"^JOIN_(1BLN|2BLN|3BLN)_(.+)$",
@@ -256,9 +297,9 @@ def parse_start_payload(
             "REF_" + match.group(2)
         )
 
-    # ==================================
+    # ======================================
     # REF_AKMAL
-    # ==================================
+    # ======================================
 
     if payload.startswith(
         "REF_"
@@ -269,9 +310,9 @@ def parse_start_payload(
             payload
         )
 
-    # ==================================
+    # ======================================
     # AKMAL
-    # ==================================
+    # ======================================
 
     if re.match(
         r"^[A-Z0-9_]+$",
@@ -320,11 +361,17 @@ async def create_group_invite(
 
         )
 
+        print(
+            f"[GROUP INVITE] "
+            f"Created for user {user_id}"
+        )
+
         return invite.invite_link
 
     except Exception as e:
 
         print(
+            "[GROUP INVITE] "
             "Create invite error:"
         )
 
@@ -344,7 +391,10 @@ async def kick_member(
 
     try:
 
-        # Ban
+        # ==================================
+        # BAN
+        # ==================================
+
         await bot.ban_chat_member(
 
             chat_id=group_id,
@@ -355,8 +405,10 @@ async def kick_member(
 
         )
 
-        # Unban supaya member
-        # tidak permanent banned
+        # ==================================
+        # UNBAN
+        # ==================================
+
         await bot.unban_chat_member(
 
             chat_id=group_id,
@@ -406,7 +458,17 @@ async def check_expired_members():
 
     if not members:
 
+        print(
+            "[EXPIRED CHECK] "
+            "Ditemukan 0 member expired."
+        )
+
         return
+
+    print(
+        f"[EXPIRED CHECK] "
+        f"Ditemukan {len(members)} member expired."
+    )
 
     for member in members:
 
@@ -426,6 +488,25 @@ async def check_expired_members():
             group_id = get_referral_group(
                 referral
             )
+
+            # ==================================
+            # ONLY GROUP PACKAGE
+            # ==================================
+
+            package_label = str(
+                member.get(
+                    "paket",
+                    ""
+                )
+            ).upper()
+
+            if (
+                "2 BULAN" not in package_label
+                and
+                "3 BULAN" not in package_label
+            ):
+
+                continue
 
             # ==================================
             # KICK
@@ -516,10 +597,6 @@ async def expired_monitor():
 
             print(e)
 
-        # ==================================
-        # CHECK EVERY 10 MINUTES
-        # ==================================
-
         await asyncio.sleep(
             600
         )
@@ -537,22 +614,23 @@ async def start_handler(
     message: Message
 ):
 
+    parts = message.text.split(
+        maxsplit=1
+    )
+
     args = (
-        message.text.split(
-            maxsplit=1
-        )
-        [1]
-        if len(
-            message.text.split(
-                maxsplit=1
-            )
-        ) > 1
+        parts[1]
+        if len(parts) > 1
         else None
     )
 
     package_key, referral = parse_start_payload(
         args
     )
+
+    # ======================================
+    # SAVE REFERRAL
+    # ======================================
 
     if referral:
 
@@ -568,39 +646,49 @@ async def start_handler(
             f"{referral}"
         )
 
+    # ======================================
+    # SAVE PACKAGE
+    # ======================================
+
     if package_key:
 
         user_packages[
             message.from_user.id
         ] = package_key
 
-    # ==================================
+    # ======================================
     # PACKAGE MENU
-    # ==================================
+    # ======================================
 
     keyboard = InlineKeyboardMarkup(
 
         inline_keyboard=[
 
             [
+
                 InlineKeyboardButton(
                     text="💎 1 Bulan — Rp500.000",
                     callback_data="pkg_1BLN"
                 )
+
             ],
 
             [
+
                 InlineKeyboardButton(
                     text="🔥 2 Bulan — Rp800.000",
                     callback_data="pkg_2BLN"
                 )
+
             ],
 
             [
+
                 InlineKeyboardButton(
                     text="👑 3 Bulan — Rp1.000.000",
                     callback_data="pkg_3BLN"
                 )
+
             ]
 
         ]
@@ -675,6 +763,10 @@ async def package_handler(
         "label"
     ]
 
+    # ======================================
+    # ACCESS INFO
+    # ======================================
+
     if package_has_group_access(
         package_key
     ):
@@ -687,18 +779,28 @@ async def package_handler(
     else:
 
         access_text = (
-            "✅ AI Assistant"
+            "✅ AI Assistant\n"
+            "❌ Tanpa akses grup"
         )
+
+    # ======================================
+    # PAYMENT BUTTON
+    # ======================================
 
     keyboard = InlineKeyboardMarkup(
 
         inline_keyboard=[
 
             [
+
                 InlineKeyboardButton(
+
                     text="💳 BAYAR & KIRIM BUKTI",
+
                     callback_data="payment"
+
                 )
+
             ]
 
         ]
@@ -710,11 +812,13 @@ async def package_handler(
         "📦 <b>PAKET YANG DIPILIH</b>\n\n"
 
         f"<b>{label}</b>\n"
+
         f"Harga: <b>Rp{price:,}</b>\n\n"
 
         f"{access_text}\n\n"
 
         "Silakan lakukan pembayaran melalui QRIS.\n"
+
         "Setelah pembayaran, kirim bukti transfer "
         "ke bot ini.",
 
@@ -746,8 +850,11 @@ async def payment_handler(
     if not package_key:
 
         await callback.answer(
+
             "Silakan pilih paket terlebih dahulu.",
+
             show_alert=True
+
         )
 
         return
@@ -766,9 +873,9 @@ async def payment_handler(
         "label"
     ]
 
-    # ==================================
+    # ======================================
     # QRIS
-    # ==================================
+    # ======================================
 
     try:
 
@@ -805,7 +912,7 @@ async def payment_handler(
     except Exception as e:
 
         print(
-            "QRIS Error:"
+            "[QRIS] Error:"
         )
 
         print(e)
@@ -839,7 +946,10 @@ async def receive_payment_proof(
     if not package_key:
 
         await message.answer(
-            "Silakan pilih paket terlebih dahulu dengan /start."
+
+            "Silakan pilih paket terlebih dahulu "
+            "dengan /start."
+
         )
 
         return
@@ -891,18 +1001,34 @@ async def receive_user_data(
 
     text = message.text.strip()
 
-    # ==================================
-    # FORWARD DATA TO ADMIN
-    # ==================================
+    package_key = user_packages.get(
+        user_id
+    )
 
-    for admin_id in (
+    if not package_key:
+
+        await message.answer(
+            "Paket tidak ditemukan. Silakan /start kembali."
+        )
+
+        return
+
+    # ======================================
+    # SEND DATA TO ADMIN
+    # ======================================
+
+    admin_ids = (
+
         ADMIN_IDS
         if isinstance(
             ADMIN_IDS,
             (list, tuple, set)
         )
         else [ADMIN_IDS]
-    ):
+
+    )
+
+    for admin_id in admin_ids:
 
         try:
 
@@ -919,7 +1045,7 @@ async def receive_user_data(
                 f"@{message.from_user.username or '-'}\n\n"
 
                 f"📦 Paket: "
-                f"<b>{PACKAGE_MAP[user_packages[user_id]]['label']}</b>\n\n"
+                f"<b>{PACKAGE_MAP[package_key]['label']}</b>\n\n"
 
                 f"📝 Data Member:\n"
                 f"{text}",
@@ -944,6 +1070,10 @@ async def receive_user_data(
                 )
 
             )
+
+            # ==================================
+            # APPROVE / REJECT
+            # ==================================
 
             keyboard = InlineKeyboardMarkup(
 
@@ -986,7 +1116,8 @@ async def receive_user_data(
         except Exception as e:
 
             print(
-                "Send admin data error:"
+                "[ADMIN] "
+                "Send data error:"
             )
 
             print(e)
@@ -994,6 +1125,7 @@ async def receive_user_data(
     await message.answer(
 
         "✅ Data kamu sudah dikirim ke admin.\n\n"
+
         "Silakan tunggu proses verifikasi."
 
     )
@@ -1011,22 +1143,37 @@ async def approve_handler(
     callback: CallbackQuery
 ):
 
+    # ======================================
+    # ADMIN CHECK
+    # ======================================
+
     if not is_admin(
         callback.from_user.id
     ):
 
         await callback.answer(
+
             "Tidak memiliki akses.",
+
             show_alert=True
+
         )
 
         return
+
+    # ======================================
+    # USER ID
+    # ======================================
 
     user_id = int(
         callback.data.split(
             "_"
         )[1]
     )
+
+    # ======================================
+    # PACKAGE
+    # ======================================
 
     package_key = user_packages.get(
         user_id
@@ -1035,8 +1182,23 @@ async def approve_handler(
     if not package_key:
 
         await callback.answer(
+
             "Data paket user tidak ditemukan.",
+
             show_alert=True
+
+        )
+
+        return
+
+    if package_key not in PACKAGE_MAP:
+
+        await callback.answer(
+
+            "Paket tidak valid.",
+
+            show_alert=True
+
         )
 
         return
@@ -1044,6 +1206,10 @@ async def approve_handler(
     package = PACKAGE_MAP[
         package_key
     ]
+
+    # ======================================
+    # DATE
+    # ======================================
 
     now = datetime.now()
 
@@ -1055,14 +1221,47 @@ async def approve_handler(
         )
     )
 
+    # ======================================
+    # REFERRAL
+    # ======================================
+
     referral = user_referrals.get(
         user_id,
         ""
     )
 
-    # ==================================
-    # SAVE TO GOOGLE SHEET FIRST
-    # ==================================
+    # ======================================
+    # USERNAME
+    # ======================================
+
+    username = ""
+
+    try:
+
+        username = (
+            callback.message
+            .chat
+            .username
+            or ""
+        )
+
+    except Exception:
+
+        username = ""
+
+    if username:
+
+        telegram_name = (
+            f"@{username}"
+        )
+
+    else:
+
+        telegram_name = "-"
+
+    # ======================================
+    # MEMBER DATA
+    # ======================================
 
     member_data = {
 
@@ -1070,9 +1269,7 @@ async def approve_handler(
             user_id,
 
         "username":
-            callback.message.chat.username
-            if callback.message.chat
-            else "",
+            username,
 
         "nama":
             "",
@@ -1101,6 +1298,10 @@ async def approve_handler(
 
     }
 
+    # ======================================
+    # SAVE GOOGLE SHEET
+    # ======================================
+
     saved = await asyncio.to_thread(
 
         save_member,
@@ -1112,27 +1313,45 @@ async def approve_handler(
     if not saved:
 
         await callback.answer(
+
             "Gagal menyimpan ke Google Sheet.",
+
             show_alert=True
+
         )
 
         return
 
-    # ==================================
-    # CREATE GROUP INVITE
-    # ==================================
+    print(
+        "[APPROVED] "
+        f"User {user_id} "
+        f"berhasil disimpan."
+    )
+
+    # ======================================
+    # GET REFERRAL GROUP
+    # ======================================
+
+    group_id = get_referral_group(
+        referral
+    )
+
+    print(
+        "[REFERRAL GROUP] "
+        f"Referral: {referral or '-'} "
+        f"-> Group ID: {group_id}"
+    )
+
+    # ======================================
+    # CREATE INVITE
+    # ONLY 2BLN + 3BLN
+    # ======================================
 
     invite_link = None
-
-    group_id = None
 
     if package_has_group_access(
         package_key
     ):
-
-        group_id = get_referral_group(
-            referral
-        )
 
         invite_link = await create_group_invite(
 
@@ -1142,15 +1361,41 @@ async def approve_handler(
 
         )
 
-    # ==================================
-    # USER MESSAGE
-    # ==================================
+        if invite_link:
+
+            print(
+                "[GROUP INVITE] "
+                f"User {user_id} -> SUCCESS"
+            )
+
+        else:
+
+            print(
+                "[GROUP INVITE] "
+                f"User {user_id} -> FAILED"
+            )
+
+    else:
+
+        print(
+            "[GROUP ACCESS] "
+            f"User {user_id} "
+            f"paket {package['label']} "
+            "tidak memiliki akses grup."
+        )
+
+    # ======================================
+    # SEND USER APPROVAL MESSAGE
+    # ======================================
 
     try:
 
         user_keyboard = []
 
+        # ----------------------------------
         # AI ASSISTANT
+        # ----------------------------------
+
         user_keyboard.append([
 
             InlineKeyboardButton(
@@ -1163,7 +1408,10 @@ async def approve_handler(
 
         ])
 
+        # ----------------------------------
         # GROUP
+        # ----------------------------------
+
         if invite_link:
 
             user_keyboard.append([
@@ -1205,63 +1453,136 @@ async def approve_handler(
 
         )
 
-        # ==================================
-        # GROUP NOTIFICATION
-        # ==================================
-
-        if group_id:
-
-            try:
-
-                await bot.send_message(
-
-                    group_id,
-
-                    "🔔 <b>MEMBER BARU</b>\n\n"
-
-                    "Member baru telah mendapatkan "
-                    "akses melalui sistem membership.",
-
-                    parse_mode="HTML"
-
-                )
-
-            except Exception as e:
-
-                print(
-                    "[GROUP] "
-                    "Notification failed:"
-                )
-
-                print(e)
-
     except Exception as e:
 
         print(
-            "User approval message error:"
+            "[APPROVED] "
+            "User notification error:"
         )
 
         print(e)
 
-    await callback.message.edit_reply_markup(
-        reply_markup=None
-    )
+    # ======================================
+    # REFERRAL GROUP NOTIFICATION
+    # ======================================
 
-    await callback.message.answer(
+    try:
+
+        referral_text = (
+            referral
+            if referral
+            else "-"
+        )
+
+        group_message = (
+
+            "🔔 <b>MEMBER BARU</b>\n\n"
+
+            f"Nama Telegram/ID : "
+            f"{telegram_name} / "
+            f"<code>{user_id}</code>\n"
+
+            f"Jumlah Nominal Langganan : "
+            f"<b>Rp{package['price']:,}</b>\n"
+
+            f"Durasi Langganan : "
+            f"<b>{package['label']}</b>\n"
+
+            f"Referal : "
+            f"<b>{referral_text}</b>"
+
+        )
+
+        await bot.send_message(
+
+            group_id,
+
+            group_message,
+
+            parse_mode="HTML"
+
+        )
+
+        print(
+            "[REFERRAL GROUP] "
+            f"Notification SUCCESS "
+            f"-> {group_id}"
+        )
+
+    except Exception as e:
+
+        print(
+            "[REFERRAL GROUP] "
+            f"Notification FAILED "
+            f"-> {group_id}"
+        )
+
+        print(e)
+
+    # ======================================
+    # REMOVE ADMIN BUTTON
+    # ======================================
+
+    try:
+
+        await callback.message.edit_reply_markup(
+            reply_markup=None
+        )
+
+    except Exception as e:
+
+        print(
+            "[ADMIN] "
+            "Failed to remove buttons:"
+        )
+
+        print(e)
+
+    # ======================================
+    # ADMIN RESULT
+    # ======================================
+
+    result_text = (
 
         f"✅ User <code>{user_id}</code> "
         "berhasil disetujui.\n\n"
 
-        f"Paket: <b>{package['label']}</b>\n"
+        f"📦 Paket: "
+        f"<b>{package['label']}</b>\n"
 
-        f"Expired: "
+        f"💰 Harga: "
+        f"<b>Rp{package['price']:,}</b>\n"
+
+        f"📅 Expired: "
         f"<b>{expired.strftime('%d-%m-%Y %H:%M:%S')}</b>\n"
 
-        + (
+        f"🔗 Referral: "
+        f"<b>{referral or '-'}</b>\n"
+
+    )
+
+    if invite_link:
+
+        result_text += (
             "\n👥 Invite grup berhasil dibuat."
-            if invite_link
-            else "\n🤖 Paket AI Assistant saja."
-        ),
+        )
+
+    else:
+
+        result_text += (
+            "\n🤖 Paket AI Assistant saja."
+        )
+
+    result_text += (
+
+        "\n\n📨 Notifikasi referral: "
+        "<b>TERKIRIM</b>"
+
+    )
+
+    await callback.message.answer(
+
+        result_text,
 
         parse_mode="HTML"
 
@@ -1284,13 +1605,20 @@ async def reject_handler(
     callback: CallbackQuery
 ):
 
+    # ======================================
+    # ADMIN CHECK
+    # ======================================
+
     if not is_admin(
         callback.from_user.id
     ):
 
         await callback.answer(
+
             "Tidak memiliki akses.",
+
             show_alert=True
+
         )
 
         return
@@ -1300,6 +1628,10 @@ async def reject_handler(
             "_"
         )[1]
     )
+
+    # ======================================
+    # USER NOTIFICATION
+    # ======================================
 
     try:
 
@@ -1319,14 +1651,30 @@ async def reject_handler(
     except Exception as e:
 
         print(
-            "Reject notification error:"
+            "[REJECT] "
+            "Notification error:"
         )
 
         print(e)
 
-    await callback.message.edit_reply_markup(
-        reply_markup=None
-    )
+    # ======================================
+    # REMOVE BUTTON
+    # ======================================
+
+    try:
+
+        await callback.message.edit_reply_markup(
+            reply_markup=None
+        )
+
+    except Exception as e:
+
+        print(
+            "[REJECT] "
+            "Failed remove buttons:"
+        )
+
+        print(e)
 
     await callback.message.answer(
 
@@ -1425,9 +1773,9 @@ async def main():
         "=========================================="
     )
 
-    # ==================================
+    # ======================================
     # START EXPIRED MONITOR
-    # ==================================
+    # ======================================
 
     asyncio.create_task(
         expired_monitor()
@@ -1449,14 +1797,18 @@ async def main():
         "❌ Trial: DISABLED"
     )
 
-    # ==================================
+    # ======================================
     # START BOT
-    # ==================================
+    # ======================================
 
     await dp.start_polling(
         bot
     )
 
+
+# ==========================================
+# RUN
+# ==========================================
 
 if __name__ == "__main__":
 
