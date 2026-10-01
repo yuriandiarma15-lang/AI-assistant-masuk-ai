@@ -3,7 +3,7 @@ import re
 
 from datetime import datetime, timedelta
 
-from aiogram import Bot, Dispatcher, F
+from aiogram import Bot, Dispatcher, F, BaseMiddleware
 
 from aiogram.filters import (
     CommandStart,
@@ -47,6 +47,78 @@ bot = Bot(
 
 dp = Dispatcher()
 
+# ==========================================
+# PRIVATE CHAT ONLY MIDDLEWARE
+# ==========================================
+
+class PrivateChatOnlyMiddleware(BaseMiddleware):
+
+    async def __call__(
+        self,
+        handler,
+        event,
+        data
+    ):
+
+        # ======================================
+        # MESSAGE
+        # ======================================
+
+        if isinstance(event, Message):
+
+            if event.chat.type != "private":
+
+                print(
+                    f"[GROUP BLOCKED] "
+                    f"Message ignored | "
+                    f"Chat ID: {event.chat.id} | "
+                    f"Type: {event.chat.type}"
+                )
+
+                return
+
+        # ======================================
+        # CALLBACK QUERY
+        # ======================================
+
+        if isinstance(event, CallbackQuery):
+
+            if (
+                event.message
+                and
+                event.message.chat.type != "private"
+            ):
+
+                print(
+                    f"[GROUP BLOCKED] "
+                    f"Callback ignored | "
+                    f"Chat ID: "
+                    f"{event.message.chat.id}"
+                )
+
+                return
+
+        # ======================================
+        # PRIVATE CHAT
+        # ======================================
+
+        return await handler(
+            event,
+            data
+        )
+
+
+# ==========================================
+# APPLY PRIVATE CHAT ONLY
+# ==========================================
+
+dp.message.middleware(
+    PrivateChatOnlyMiddleware()
+)
+
+dp.callback_query.middleware(
+    PrivateChatOnlyMiddleware()
+)
 
 # ==========================================
 # TEMP MEMORY
